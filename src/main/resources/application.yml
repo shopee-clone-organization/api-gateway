@@ -5,6 +5,9 @@ spring:
   application:
     name: api-gateway
 
+  main:
+    web-application-type: reactive
+
   cloud:
     gateway:
       routes:
@@ -19,6 +22,9 @@ spring:
           uri: http://product-service:8080
           predicates:
             - Path=/api/products/**
+      # Các bộ lọc mặc định
+      default-filters:
+        - RemoveRequestHeader=Cookie
 
       # Thêm tính năng CORS nếu frontend chạy ở localhost:3000 (Next.js)
       globalcors:
@@ -27,3 +33,10 @@ spring:
             allowedOrigins: "http://localhost:3000"
             allowedMethods: "*"
             allowedHeaders: "*"
+
+# custom:
+#   route-roles:
+#     - path: /api/admin/**
+#       required-roles: ROLE_ADMIN
+#     - path: /api/products/**
+#       required-roles: ROLE_USER
