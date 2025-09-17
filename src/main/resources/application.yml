@@ -10,33 +10,34 @@ spring:
 
   cloud:
     gateway:
-      routes:
-        # Route đến user-service
-        - id: user-service
-          uri: http://user-service:8080
-          predicates:
-            - Path=/api/users/**, /api/auth/**
+      server:
+        webflux:
+          routes:
+            # ========== USER SERVICE ==========
+            - id: user-service-auth
+              uri: http://user-service:8080
+              predicates:
+                - Path=/api/auth/**
 
-        # Route đến product-service
-        - id: product-service
-          uri: http://product-service:8080
-          predicates:
-            - Path=/api/products/**
-      # Các bộ lọc mặc định
-      default-filters:
-        - RemoveRequestHeader=Cookie
+            - id: user-service-users
+              uri: http://user-service:8080
+              predicates:
+                - Path=/api/users/**
 
-      # Thêm tính năng CORS nếu frontend chạy ở localhost:3000 (Next.js)
-      globalcors:
-        cors-configurations:
-          '[/**]':
-            allowedOrigins: "http://localhost:3000"
-            allowedMethods: "*"
-            allowedHeaders: "*"
+            # ========== PRODUCT SERVICE ==========
+            - id: product-service
+              uri: http://product-service:8080
+              predicates:
+                - Path=/api/products/**
 
-# custom:
-#   route-roles:
-#     - path: /api/admin/**
-#       required-roles: ROLE_ADMIN
-#     - path: /api/products/**
-#       required-roles: ROLE_USER
+          # Bộ lọc mặc định
+          default-filters:
+            - RemoveRequestHeader=Cookie
+
+          # CORS cho frontend React
+          globalcors:
+            cors-configurations:
+              "[/**]":
+                allowedOrigins: "http://localhost:3000"
+                allowedMethods: "*"
+                allowedHeaders: "*"

@@ -1,11 +1,10 @@
 package com.shopeeclone.gateway.filter;
 
-import com.shopeeclone.gateway.util.JwtUtils;
+import com.shopeeclone.gateway.util.JwtUtil;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 
-import java.util.List;
-
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -15,17 +14,23 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
+
 @Component
-@RequiredArgsConstructor
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
-    private final JwtUtils jwtUtils;
+    private final JwtUtil jwtUtil;
+
+    @Autowired
+    public JwtAuthenticationFilter(JwtUtil jwtUtil) {
+        this.jwtUtil = jwtUtil;
+    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
 
-        // Cho phép các endpoint public thoát luôn
+        // Cho phép các endpoint public
         if (path.startsWith("/api/auth") || path.startsWith("/api/users/register")) {
             return chain.filter(exchange);
         }
@@ -36,29 +41,38 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return exchange.getResponse().setComplete();
         }
 
-        String token = authHeader.replace("Bearer ", "");
+        String token = authHeader.substring(7);
 
         try {
-            Claims claims = jwtUtils.validateToken(token);
-            List<String> roles = jwtUtils.extractRoles(claims);
+            // Validate token
+            if (!jwtUtil.validateToken(token)) {
+                exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                return exchange.getResponse().setComplete();
+            }
 
-            // Ví dụ: route /api/admin/** thì phải có ROLE_ADMIN
-            if (path.startsWith("/api/admin") && !roles.contains("ROLE_ADMIN")) {
+            // Lấy claims và roles
+            Claims claims = jwtUtil.validateTokenAndGetClaims(token);
+            String username = claims.getSubject();
+            @SuppressWarnings("unchecked")
+            List<String> roles = (List<String>) claims.get("roles");
+
+            // Kiểm tra quyền ROLE_ADMIN
+            if (path.startsWith("/api/admin") && (roles == null || !roles.contains("ROLE_ADMIN"))) {
                 exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                 return exchange.getResponse().setComplete();
             }
 
-            // Các route còn lại, bạn có thể cho ROLE_USER trở lên
-            if (path.startsWith("/api/products") && roles.isEmpty()) {
+            // Kiểm tra ROLE_USER cho /api/products/**
+            if (path.startsWith("/api/products") && (roles == null || roles.isEmpty())) {
                 exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                 return exchange.getResponse().setComplete();
             }
 
-            // Add username vào header forwarding xuống service
+            // Forward username và roles xuống microservice
             exchange = exchange.mutate()
                     .request(r -> r.headers(h -> {
-                        h.add("X-User-Name", claims.getSubject());
-                        h.add("X-User-Roles", String.join(",", roles));
+                        h.add("X-User-Name", username);
+                        h.add("X-User-Roles", String.join(",", roles != null ? roles : List.of()));
                     }))
                     .build();
 
@@ -72,6 +86,6 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     @Override
     public int getOrder() {
-        return -1; // Filter ưu tiên cao
+        return -1;
     }
 }
